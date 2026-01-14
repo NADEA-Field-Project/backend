@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const pool = require('./db');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -7,178 +8,230 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-// --- Initial Data (Mock DB) ---
-let users = [];
-let carts = [];
-let orders = [];
-let addresses = [];
-
-// --- User & Auth ---
-app.post('/api/v1/auth/signup', (req, res) => {
-    const { email, username, password } = req.body;
-    if (!email || !username || !password) {
-        return res.status(400).json({ success: false, message: 'Missing required fields' });
-    }
-    const newUser = { id: Date.now(), email, username, password };
-    users.push(newUser);
-    res.status(201).json({ success: true, message: 'Signup successful', data: { id: newUser.id, email: newUser.email } });
-});
-
-app.post('/api/v1/auth/login', (req, res) => {
-    const { email, password } = req.body;
-    const user = users.find(u => u.email === email && u.password === password);
-    if (!user) {
-        return res.status(401).json({ success: false, message: 'Invalid credentials' });
-    }
+// Sample Route
+app.get('/', (req, res) => {
     res.json({
-        success: true,
-        token: 'mock-jwt-token-' + user.id,
-        user: { id: user.id, email: user.email, name: user.username }
+        message: 'Welcome to NADEA Burger Backend API (DB Linked)',
+        status: 'online',
+        timestamp: new Date().toISOString()
     });
 });
 
-app.post('/api/v1/auth/logout', (req, res) => {
-    res.json({ success: true, message: 'Logged out' });
+// --- User & Auth ---
+app.post('/api/v1/auth/signup', async (req, res) => {
+    const { email, username, password } = req.body;
+    try {
+        const [result] = await pool.execute(
+            'INSERT INTO users (email, username, password) VALUES (?, ?, ?)',
+            [email, username, password]
+        );
+        res.status(201).json({ success: true, userId: result.insertId });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
 });
 
-app.get('/api/v1/users/me', (req, res) => {
-    // In a real app, this would use the JWT token to identify the user
-    res.json({ id: 1, email: 'test@example.com', name: 'Test User', phone: '010-1234-5678' });
-});
-
-app.patch('/api/v1/users/me', (req, res) => {
-    const { name, phone } = req.body;
-    res.json({ success: true, message: 'Profile updated', data: { name, phone } });
+app.post('/api/v1/auth/login', async (req, res) => {
+    const { email, password } = req.body;
+    try {
+        const [rows] = await pool.execute(
+            'SELECT id, email, username FROM users WHERE email = ? AND password = ?',
+            [email, password]
+        );
+        if (rows.length === 0) {
+            return res.status(401).json({ success: false, message: 'Invalid credentials' });
+        }
+        res.json({ success: true, user: rows[0], token: 'mock-jwt-token-' + rows[0].id });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
 });
 
 // --- Products ---
-app.get('/api/v1/categories', (req, res) => {
-    res.json([
-        { id: 1, name: 'Burger', imageUrl: 'https://images.unsplash.com/photo-1571091718767-18b5b1457add' },
-        { id: 2, name: 'Sides', imageUrl: 'https://images.unsplash.com/photo-1573016608244-7d5e271367ec' },
-        { id: 3, name: 'Drinks', imageUrl: 'https://images.unsplash.com/photo-1581006852262-e4307cf6283a' }
-    ]);
-});
-
-app.get('/api/v1/products', (req, res) => {
-    const { category_id } = req.query;
-    let products = [
-        { id: 1, categoryId: 1, name: 'NADEA Classic Burger', price: 5500, imageUrl: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd' },
-        { id: 2, categoryId: 1, name: 'Double Cheese Burger', price: 7500, imageUrl: 'https://images.unsplash.com/photo-1512152272829-e3139592d56f' },
-        { id: 3, categoryId: 2, name: 'French Fries', price: 2000, imageUrl: 'https://images.unsplash.com/photo-1573016608244-7d5e271367ec' }
-    ];
-    if (category_id) {
-        products = products.filter(p => p.categoryId == category_id);
+app.get('/api/v1/categories', async (req, res) => {
+    try {
+        const [rows] = await pool.execute('SELECT * FROM categories');
+        res.json(rows);
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
     }
-    res.json(products);
 });
 
-app.get('/api/v1/products/recommendations', (req, res) => {
-    res.json([
-        { id: 1, name: 'NADEA Classic Burger', price: 5500, description: 'Our best seller!' }
-    ]);
+app.get('/api/v1/products', async (req, res) => {
+    const { category_id } = req.query;
+    try {
+        let query = 'SELECT * FROM products';
+        let params = [];
+        if (category_id) {
+            query += ' WHERE category_id = ?';
+            params.push(category_id);
+        }
+        const [rows] = await pool.execute(query, params);
+        res.json(rows);
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
 });
 
-app.get('/api/v1/products/:id', (req, res) => {
-    res.json({
-        id: req.params.id,
-        name: 'Detailed Burger',
-        price: 6000,
-        description: 'Premium beef patty with fresh vegetables.',
-        nutrition: { calories: 550, protein: '25g', fat: '30g', sodium: '800mg' }
-    });
+app.get('/api/v1/products/recommendations', async (req, res) => {
+    try {
+        const [rows] = await pool.execute('SELECT * FROM products WHERE is_recommended = TRUE');
+        res.json(rows);
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+app.get('/api/v1/products/:id', async (req, res) => {
+    try {
+        const [rows] = await pool.execute('SELECT * FROM products WHERE id = ?', [req.params.id]);
+        if (rows.length === 0) return res.status(404).json({ message: 'Product not found' });
+        res.json(rows[0]);
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
 });
 
 // --- Cart ---
-app.get('/api/v1/carts', (req, res) => {
-    res.json({ items: carts, totalPrice: carts.reduce((acc, item) => acc + (item.price * item.quantity), 0) });
+app.get('/api/v1/carts', async (req, res) => {
+    const { userId } = req.query; // In real app, get from token
+    try {
+        const [rows] = await pool.execute(
+            'SELECT ci.*, p.name, p.price, p.image_url FROM cart_items ci JOIN products p ON ci.product_id = p.id WHERE ci.user_id = ?',
+            [userId]
+        );
+        const total = rows.reduce((acc, item) => acc + (item.price * item.quantity), 0);
+        res.json({ items: rows, totalPrice: total });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
 });
 
-app.post('/api/v1/carts/items', (req, res) => {
-    const { productId, quantity, options } = req.body;
-    const newItem = { id: Date.now(), productId, quantity, options, price: 5000 }; // price should ideally come from products table
-    carts.push(newItem);
-    res.status(201).json({ success: true, message: 'Item added to cart', item: newItem });
+app.post('/api/v1/carts/items', async (req, res) => {
+    const { userId, productId, quantity, options } = req.body;
+    try {
+        // Check if item already in cart
+        const [existing] = await pool.execute(
+            'SELECT * FROM cart_items WHERE user_id = ? AND product_id = ?',
+            [userId, productId]
+        );
+
+        if (existing.length > 0) {
+            await pool.execute(
+                'UPDATE cart_items SET quantity = quantity + ? WHERE id = ?',
+                [quantity || 1, existing[0].id]
+            );
+        } else {
+            await pool.execute(
+                'INSERT INTO cart_items (user_id, product_id, quantity, options) VALUES (?, ?, ?, ?)',
+                [userId, productId, quantity || 1, JSON.stringify(options || {})]
+            );
+        }
+        res.status(201).json({ success: true, message: 'Item added to cart' });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
 });
 
-app.patch('/api/v1/carts/items/:itemId', (req, res) => {
+app.patch('/api/v1/carts/items/:itemId', async (req, res) => {
     const { quantity } = req.body;
-    const item = carts.find(c => c.id == req.params.itemId);
-    if (item) item.quantity = quantity;
-    res.json({ success: true, message: 'Quantity updated' });
+    try {
+        await pool.execute('UPDATE cart_items SET quantity = ? WHERE id = ?', [quantity, req.params.itemId]);
+        res.json({ success: true, message: 'Quantity updated' });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
 });
 
-app.delete('/api/v1/carts/items/:itemId', (req, res) => {
-    carts = carts.filter(c => c.id != req.params.itemId);
-    res.json({ success: true, message: 'Item removed from cart' });
-});
-
-app.delete('/api/v1/carts', (req, res) => {
-    carts = [];
-    res.json({ success: true, message: 'Cart cleared' });
+app.delete('/api/v1/carts/items/:itemId', async (req, res) => {
+    try {
+        await pool.execute('DELETE FROM cart_items WHERE id = ?', [req.params.itemId]);
+        res.json({ success: true, message: 'Item removed from cart' });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
 });
 
 // --- Orders ---
-app.post('/api/v1/orders', (req, res) => {
-    const { addressId, items, totalPrice } = req.body;
-    const newOrder = {
-        id: 'ORD-' + Date.now(),
-        date: new Date().toISOString(),
-        addressId,
-        items,
-        totalPrice,
-        status: 'Pending'
-    };
-    orders.push(newOrder);
-    carts = []; // Clear cart on successful order
-    res.status(201).json({ success: true, orderId: newOrder.id, message: 'Order created' });
-});
+app.post('/api/v1/orders', async (req, res) => {
+    const { userId, addressId } = req.body;
+    const connection = await pool.getConnection();
+    try {
+        await connection.beginTransaction();
 
-app.get('/api/v1/orders', (req, res) => {
-    res.json(orders);
-});
+        // 1. Get Cart Items
+        const [cartItems] = await connection.execute(
+            'SELECT ci.*, p.price FROM cart_items ci JOIN products p ON ci.product_id = p.id WHERE ci.user_id = ?',
+            [userId]
+        );
 
-app.get('/api/v1/orders/:id', (req, res) => {
-    const order = orders.find(o => o.id === req.params.id);
-    res.json(order || { message: 'Order not found' });
-});
+        if (cartItems.length === 0) throw new Error('Cart is empty');
 
-app.patch('/api/v1/orders/:id', (req, res) => {
-    const { status } = req.body;
-    const order = orders.find(o => o.id === req.params.id);
-    if (order) order.status = status;
-    res.json({ success: true, message: 'Order status updated' });
-});
+        const totalPrice = cartItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
+        const orderId = 'ORD-' + Date.now();
 
-// --- Address ---
-app.get('/api/v1/addresses', (req, res) => {
-    res.json(addresses);
-});
+        // 2. Create Order
+        await connection.execute(
+            'INSERT INTO orders (id, user_id, total_price, status, address_id) VALUES (?, ?, ?, ?, ?)',
+            [orderId, userId, totalPrice, 'Pending', addressId]
+        );
 
-app.post('/api/v1/addresses', (req, res) => {
-    const { receiverName, phone, addressLine1, addressLine2, isDefault } = req.body;
-    const newAddress = { id: Date.now(), receiverName, phone, addressLine1, addressLine2, isDefault };
-    if (isDefault) addresses.forEach(a => a.isDefault = false);
-    addresses.push(newAddress);
-    res.status(201).json({ success: true, data: newAddress });
-});
+        // 3. Create Order Items
+        for (const item of cartItems) {
+            await connection.execute(
+                'INSERT INTO order_items (order_id, product_id, quantity, unit_price, options) VALUES (?, ?, ?, ?, ?)',
+                [orderId, item.product_id, item.quantity, item.price, JSON.stringify(item.options)]
+            );
+        }
 
-app.put('/api/v1/addresses/:id', (req, res) => {
-    const index = addresses.findIndex(a => a.id == req.params.id);
-    if (index !== -1) {
-        addresses[index] = { ...addresses[index], ...req.body };
+        // 4. Clear Cart
+        await connection.execute('DELETE FROM cart_items WHERE user_id = ?', [userId]);
+
+        await connection.commit();
+        res.status(201).json({ success: true, orderId: orderId, message: 'Order created successfully' });
+    } catch (error) {
+        await connection.rollback();
+        res.status(500).json({ success: false, message: error.message });
+    } finally {
+        connection.release();
     }
-    res.json({ success: true, message: 'Address updated' });
 });
 
-app.delete('/api/v1/addresses/:id', (req, res) => {
-    addresses = addresses.filter(a => a.id != req.params.id);
-    res.json({ success: true, message: 'Address deleted' });
+app.get('/api/v1/orders', async (req, res) => {
+    const { userId } = req.query;
+    try {
+        const [rows] = await pool.execute('SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC', [userId]);
+        res.json(rows);
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
 });
 
-app.patch('/api/v1/addresses/:id/default', (req, res) => {
-    addresses.forEach(a => a.isDefault = (a.id == req.params.id));
-    res.json({ success: true, message: 'Default address set' });
+// --- Reorder Logic ---
+app.post('/api/v1/carts/reorder', async (req, res) => {
+    const { userId, orderId } = req.body;
+    try {
+        // 1. Get previous order items
+        const [orderItems] = await pool.execute(
+            'SELECT product_id, quantity, options FROM order_items WHERE order_id = ?',
+            [orderId]
+        );
+
+        if (orderItems.length === 0) return res.status(404).json({ message: 'Order items not found' });
+
+        // 2. Add them back to cart
+        for (const item of orderItems) {
+            // Logic to handle potentially existing items in cart (simplified)
+            await pool.execute(
+                'INSERT INTO cart_items (user_id, product_id, quantity, options) VALUES (?, ?, ?, ?)',
+                [userId, item.product_id, item.quantity, JSON.stringify(item.options)]
+            );
+        }
+
+        res.status(201).json({ success: true, message: 'Historical items added back to cart' });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
 });
 
 app.listen(PORT, () => {

@@ -22,7 +22,8 @@
   "homepage": "https://github.com/NADEA-Field-Project/backend#readme",
   "dependencies": {
     "cors": "^2.8.5",
-    "express": "^5.2.1"
+    "express": "^5.2.1",
+    "mysql2": "^3.16.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.11"
