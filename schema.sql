@@ -1,6 +1,19 @@
--- NADEA Burger Database Schema
+-- 1. 데이터베이스 생성 및 선택
+CREATE DATABASE IF NOT EXISTS nadea_burger_db;
+USE nadea_burger_db;
 
--- 1. Users Table
+-- 2. 기존 테이블 삭제 (초기화용)
+SET FOREIGN_KEY_CHECKS = 0;
+DROP TABLE IF EXISTS addresses;
+DROP TABLE IF EXISTS order_items;
+DROP TABLE IF EXISTS orders;
+DROP TABLE IF EXISTS cart_items;
+DROP TABLE IF EXISTS products;
+DROP TABLE IF EXISTS categories;
+DROP TABLE IF EXISTS users;
+SET FOREIGN_KEY_CHECKS = 1;
+
+-- 3. 사용자 테이블 (Users)
 CREATE TABLE users (
     id INT AUTO_INCREMENT PRIMARY KEY,
     email VARCHAR(255) NOT NULL UNIQUE,
@@ -9,16 +22,16 @@ CREATE TABLE users (
     phone VARCHAR(20),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 2. Categories Table
+-- 4. 카테고리 테이블 (Categories)
 CREATE TABLE categories (
     id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(50) NOT NULL,
     image_url VARCHAR(255)
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 3. Products Table
+-- 5. 상품 테이블 (Products)
 CREATE TABLE products (
     id INT AUTO_INCREMENT PRIMARY KEY,
     category_id INT,
@@ -27,34 +40,34 @@ CREATE TABLE products (
     price INT NOT NULL,
     image_url VARCHAR(255),
     is_recommended BOOLEAN DEFAULT FALSE,
-    nutrition_info JSON, -- Calories, Sodium, etc.
-    FOREIGN KEY (category_id) REFERENCES categories(id)
-);
+    nutrition_info JSON, -- 칼로리, 단백질 등 정보 저장
+    FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 4. Cart Items Table
+-- 6. 장바구니 테이블 (Cart Items)
 CREATE TABLE cart_items (
     id INT AUTO_INCREMENT PRIMARY KEY,
     user_id INT NOT NULL,
     product_id INT NOT NULL,
     quantity INT DEFAULT 1,
-    options JSON, -- e.g. {"no_onion": true, "extra_cheese": 1}
+    options JSON, -- 예: {"no_onion": true, "extra_cheese": 1}
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id),
-    FOREIGN KEY (product_id) REFERENCES products(id)
-);
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 5. Orders Table
+-- 7. 주문 테이블 (Orders)
 CREATE TABLE orders (
-    id VARCHAR(50) PRIMARY KEY, -- e.g. ORD-20260114-001
+    id VARCHAR(50) PRIMARY KEY, -- 예: ORD-20260114-001
     user_id INT NOT NULL,
     total_price INT NOT NULL,
     status ENUM('Pending', 'Preparing', 'Delivering', 'Completed', 'Cancelled') DEFAULT 'Pending',
     address_id INT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id)
-);
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 6. Order Items Table
+-- 8. 주문 상세 품목 테이블 (Order Items)
 CREATE TABLE order_items (
     id INT AUTO_INCREMENT PRIMARY KEY,
     order_id VARCHAR(50) NOT NULL,
@@ -62,11 +75,11 @@ CREATE TABLE order_items (
     quantity INT NOT NULL,
     unit_price INT NOT NULL,
     options JSON,
-    FOREIGN KEY (order_id) REFERENCES orders(id),
-    FOREIGN KEY (product_id) REFERENCES products(id)
-);
+    FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
+    FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 7. Addresses Table
+-- 9. 배송지 테이블 (Addresses)
 CREATE TABLE addresses (
     id INT AUTO_INCREMENT PRIMARY KEY,
     user_id INT NOT NULL,
@@ -75,14 +88,24 @@ CREATE TABLE addresses (
     address_line1 VARCHAR(255) NOT NULL,
     address_line2 VARCHAR(255),
     is_default BOOLEAN DEFAULT FALSE,
-    FOREIGN KEY (user_id) REFERENCES users(id)
-);
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Initial Seed Data
-INSERT INTO categories (name) VALUES ('Burger'), ('Side'), ('Drink'), ('Dessert');
+-- 10. 초기 샘플 데이터 삽입 (Seed Data)
+-- 카테고리
+INSERT INTO categories (name, image_url) VALUES
+('Burger', 'https://images.unsplash.com/photo-1571091718767-18b5b1457add'),
+('Sides', 'https://images.unsplash.com/photo-1573016608244-7d5e271367ec'),
+('Drinks', 'https://images.unsplash.com/photo-1581006852262-e4307cf6283a'),
+('Dessert', 'https://images.unsplash.com/photo-1551024601-bec78aea704b');
 
-INSERT INTO products (category_id, name, description, price, is_recommended) VALUES 
-(1, 'NADEA Classic Burger', 'The original taste of NADEA.', 5500, true),
-(1, 'Double Cheese Burger', 'Deeper cheese flavor with double patties.', 7500, true),
-(2, 'French Fries', 'Crispy Golden Fries.', 2000, false),
-(3, 'Coca Cola', 'Classic refreshing drink.', 1500, false);
+-- 상품
+INSERT INTO products (category_id, name, description, price, image_url, is_recommended, nutrition_info) VALUES
+(1, 'NADEA Classic Burger', 'NADEA의 시그니처 오리지널 버거입니다.', 5500, 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd', true, '{"calories": 450, "protein": "20g"}'),
+(1, 'Double Cheese Burger', '더블 패티와 진한 치즈의 풍미를 느껴보세요.', 7500, 'https://images.unsplash.com/photo-1512152272829-e3139592d56f', true, '{"calories": 680, "protein": "35g"}'),
+(2, 'French Fries', '겉바속촉 골든 감자튀김입니다.', 2000, 'https://images.unsplash.com/photo-1573016608244-7d5e271367ec', false, '{"calories": 320, "protein": "3g"}'),
+(3, 'Coca Cola', '시원하고 청량한 코카콜라.', 1500, 'https://images.unsplash.com/photo-1622483767028-3f66f32aef97', false, '{"calories": 140, "protein": "0g"}');
+
+-- 테스트 유저 (비밀번호: test1234)
+INSERT INTO users (email, username, password, phone) VALUES
+('test@example.com', '테스트유저', 'test1234', '010-1234-5678');
