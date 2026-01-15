@@ -91,21 +91,34 @@ CREATE TABLE addresses (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 10. 초기 샘플 데이터 삽입 (Seed Data)
+-- 10. 결제 수단 테이블 (Payment Methods)
+CREATE TABLE payment_methods (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    card_name VARCHAR(50) NOT NULL, -- 예: 국민카드, 현대카드
+    card_number VARCHAR(20) NOT NULL, -- 마스킹된 번호 예: **** **** **** 1234
+    card_type VARCHAR(20), -- 예: Credit, Debit
+    is_default BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 11. 초기 샘플 데이터 삽입 (Seed Data)
 -- 카테고리
-INSERT INTO categories (name, image_url) VALUES
-('Burger', 'https://images.unsplash.com/photo-1571091718767-18b5b1457add'),
-('Sides', 'https://images.unsplash.com/photo-1573016608244-7d5e271367ec'),
-('Drinks', 'https://images.unsplash.com/photo-1581006852262-e4307cf6283a'),
-('Dessert', 'https://images.unsplash.com/photo-1551024601-bec78aea704b');
+INSERT INTO categories (id, name, image_url) VALUES
+(1, 'Burger', 'https://images.unsplash.com/photo-1571091718767-18b5b1457add'),
+(2, 'Sides', 'https://images.unsplash.com/photo-1573016608244-7d5e271367ec'),
+(3, 'Drinks', 'https://images.unsplash.com/photo-1581006852262-e4307cf6283a'),
+(4, 'Dessert', 'https://images.unsplash.com/photo-1551024601-bec78aea704b');
 
 -- 상품
 INSERT INTO products (category_id, name, description, price, image_url, is_recommended, nutrition_info) VALUES
-(1, 'NADEA Classic Burger', 'NADEA의 시그니처 오리지널 버거입니다.', 5500, 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd', true, '{"calories": 450, "protein": "20g"}'),
-(1, 'Double Cheese Burger', '더블 패티와 진한 치즈의 풍미를 느껴보세요.', 7500, 'https://images.unsplash.com/photo-1512152272829-e3139592d56f', true, '{"calories": 680, "protein": "35g"}'),
-(2, 'French Fries', '겉바속촉 골든 감자튀김입니다.', 2000, 'https://images.unsplash.com/photo-1573016608244-7d5e271367ec', false, '{"calories": 320, "protein": "3g"}'),
-(3, 'Coca Cola', '시원하고 청량한 코카콜라.', 1500, 'https://images.unsplash.com/photo-1622483767028-3f66f32aef97', false, '{"calories": 140, "protein": "0g"}');
+(1, 'NADEA Classic Burger', 'NADEA의 시그니처 오리지널 버거입니다.', 5500, 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd', 1, '{"calories": 450, "protein": "20g"}'),
+(1, 'Double Cheese Burger', '더블 패티와 진한 치즈의 풍미를 느껴보세요.', 7500, 'https://images.unsplash.com/photo-1512152272829-e3139592d56f', 1, '{"calories": 680, "protein": "35g"}'),
+(2, 'French Fries', '겉바속촉 골든 감자튀김입니다.', 2000, 'https://images.unsplash.com/photo-1573016608244-7d5e271367ec', 0, '{"calories": 320, "protein": "3g"}'),
+(3, 'Coca Cola', '시원하고 청량한 코카콜라.', 1500, 'https://images.unsplash.com/photo-1622483767028-3f66f32aef97', 0, '{"calories": 140, "protein": "0g"}'),
+(4, 'Vanilla Ice Cream', '부드러운 바닐라 아이스크림입니다.', 1500, 'https://images.unsplash.com/photo-1570197788417-0e82375c9371', 0, '{"calories": 210, "protein": "4g"}');
 
 -- 테스트 유저 (비밀번호: test1234)
 INSERT INTO users (email, username, password, phone) VALUES
-('test@example.com', '테스트유저', 'test1234', '010-1234-5678');
+('test@example.com', '테스트유저', '$2b$10$pjCpibXdf3BawPMyP8PemeeKsfN1GRw77XebzaIjCALQWmj.cqM29K', '010-1234-5678');

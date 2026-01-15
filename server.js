@@ -335,6 +335,74 @@ app.get('/api/v1/orders', authenticateToken, async (req, res) => {
     }
 });
 
+// --- Addresses (Protected) ---
+app.get('/api/v1/addresses', authenticateToken, async (req, res) => {
+    try {
+        const [rows] = await pool.execute(
+            'SELECT * FROM addresses WHERE user_id = ? ORDER BY is_default DESC, id DESC',
+            [req.user.id]
+        );
+        res.json(rows);
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+app.post('/api/v1/addresses', authenticateToken, async (req, res) => {
+    const { receiver_name, phone, address_line1, address_line2, is_default } = req.body;
+    const connection = await pool.getConnection();
+    try {
+        await connection.beginTransaction();
+
+        // If this is set as default, unset others first
+        if (is_default) {
+            await connection.execute('UPDATE addresses SET is_default = FALSE WHERE user_id = ?', [req.user.id]);
+        }
+
+        const [result] = await connection.execute(
+            'INSERT INTO addresses (user_id, receiver_name, phone, address_line1, address_line2, is_default) VALUES (?, ?, ?, ?, ?, ?)',
+            [req.user.id, receiver_name, phone, address_line1, address_line2, is_default || false]
+        );
+
+        await connection.commit();
+        res.status(201).json({ success: true, addressId: result.insertId });
+    } catch (error) {
+        await connection.rollback();
+        res.status(500).json({ success: false, message: error.message });
+    } finally {
+        connection.release();
+    }
+});
+
+app.delete('/api/v1/addresses/:id', authenticateToken, async (req, res) => {
+    const { id } = req.params;
+    try {
+        await pool.execute('DELETE FROM addresses WHERE id = ? AND user_id = ?', [id, req.user.id]);
+        res.json({ success: true, message: 'Address deleted' });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+app.patch('/api/v1/addresses/:id/default', authenticateToken, async (req, res) => {
+    const { id } = req.params;
+    const connection = await pool.getConnection();
+    try {
+        await connection.beginTransaction();
+
+        await connection.execute('UPDATE addresses SET is_default = FALSE WHERE user_id = ?', [req.user.id]);
+        await connection.execute('UPDATE addresses SET is_default = TRUE WHERE id = ? AND user_id = ?', [id, req.user.id]);
+
+        await connection.commit();
+        res.json({ success: true, message: 'Default address updated' });
+    } catch (error) {
+        await connection.rollback();
+        res.status(500).json({ success: false, message: error.message });
+    } finally {
+        connection.release();
+    }
+});
+
 app.post('/api/v1/carts/reorder', authenticateToken, async (req, res) => {
     const { orderId } = req.body;
     try {
@@ -358,6 +426,73 @@ app.post('/api/v1/carts/reorder', authenticateToken, async (req, res) => {
 });
 
 // --- Error Handling ---
+// --- Payment Methods (Protected) ---
+app.get('/api/v1/payment-methods', authenticateToken, async (req, res) => {
+    try {
+        const [rows] = await pool.execute(
+            'SELECT * FROM payment_methods WHERE user_id = ? ORDER BY is_default DESC, id DESC',
+            [req.user.id]
+        );
+        res.json(rows);
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+app.post('/api/v1/payment-methods', authenticateToken, async (req, res) => {
+    const { card_name, card_number, card_type, is_default } = req.body;
+    const connection = await pool.getConnection();
+    try {
+        await connection.beginTransaction();
+
+        if (is_default) {
+            await connection.execute('UPDATE payment_methods SET is_default = FALSE WHERE user_id = ?', [req.user.id]);
+        }
+
+        const [result] = await connection.execute(
+            'INSERT INTO payment_methods (user_id, card_name, card_number, card_type, is_default) VALUES (?, ?, ?, ?, ?)',
+            [req.user.id, card_name, card_number, card_type, is_default || false]
+        );
+
+        await connection.commit();
+        res.status(201).json({ success: true, paymentMethodId: result.insertId });
+    } catch (error) {
+        await connection.rollback();
+        res.status(500).json({ success: false, message: error.message });
+    } finally {
+        connection.release();
+    }
+});
+
+app.delete('/api/v1/payment-methods/:id', authenticateToken, async (req, res) => {
+    const { id } = req.params;
+    try {
+        await pool.execute('DELETE FROM payment_methods WHERE id = ? AND user_id = ?', [id, req.user.id]);
+        res.json({ success: true, message: 'Payment method deleted' });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+app.patch('/api/v1/payment-methods/:id/default', authenticateToken, async (req, res) => {
+    const { id } = req.params;
+    const connection = await pool.getConnection();
+    try {
+        await connection.beginTransaction();
+
+        await connection.execute('UPDATE payment_methods SET is_default = FALSE WHERE user_id = ?', [req.user.id]);
+        await connection.execute('UPDATE payment_methods SET is_default = TRUE WHERE id = ? AND user_id = ?', [id, req.user.id]);
+
+        await connection.commit();
+        res.json({ success: true, message: 'Default payment method updated' });
+    } catch (error) {
+        await connection.rollback();
+        res.status(500).json({ success: false, message: error.message });
+    } finally {
+        connection.release();
+    }
+});
+
 app.use((err, req, res, next) => {
     console.error('Unhandled Error:', err);
     if (err instanceof multer.MulterError) {

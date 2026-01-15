@@ -12,14 +12,27 @@ connection.connect(error => {
         console.error('Error connecting to the database:', error);
         return;
     }
-    console.log('Successfully connected to the database.');
+    console.log('--- Successfully connected to the database ---\n');
 
-    connection.query('SELECT name FROM categories', (err, results) => {
+    // 카테고리 조회
+    connection.query('SELECT id, name FROM categories', (err, catResults) => {
         if (err) {
-            console.error('Error executing query:', err);
+            console.error('Error fetching categories:', err);
         } else {
-            console.log('Categories in DB:', results);
+            console.log('[Categories]');
+            console.table(catResults);
         }
-        connection.end();
+
+        // 상품 조회
+        connection.query('SELECT id, name, category_id, price FROM products', (err, prodResults) => {
+            if (err) {
+                console.error('Error fetching products:', err);
+            } else {
+                console.log('\n[Products]');
+                console.table(prodResults);
+            }
+            console.log('\n--- Test Completed ---');
+            connection.end();
+        });
     });
 });
