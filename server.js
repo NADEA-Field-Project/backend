@@ -15,9 +15,10 @@ app.use(cors());
 app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// --- DB Initialization: Favorites Table ---
-const initFavoritesTable = async () => {
+// --- DB Initialization: Favorites & Users Table Migration ---
+const initDatabase = async () => {
     try {
+        // Favorites Table
         await pool.execute(`
             CREATE TABLE IF NOT EXISTS favorites (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -30,11 +31,19 @@ const initFavoritesTable = async () => {
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
         `);
         console.log('Favorites table initialized');
+
+        // Check if image_url exists in users table, if not add it
+        const [columns] = await pool.execute('SHOW COLUMNS FROM users LIKE "image_url"');
+        if (columns.length === 0) {
+            console.log('Adding image_url column to users table...');
+            await pool.execute('ALTER TABLE users ADD COLUMN image_url VARCHAR(255) AFTER phone');
+            console.log('Column image_url added successfully');
+        }
     } catch (error) {
-        console.error('Error initializing Favorites table:', error);
+        console.error('Error initializing database:', error);
     }
 };
-initFavoritesTable();
+initDatabase();
 
 // --- Multer Configuration ---
 const storage = multer.diskStorage({
