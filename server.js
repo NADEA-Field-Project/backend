@@ -15,6 +15,27 @@ app.use(cors());
 app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
+// --- DB Initialization: Favorites Table ---
+const initFavoritesTable = async () => {
+    try {
+        await pool.execute(`
+            CREATE TABLE IF NOT EXISTS favorites (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT NOT NULL,
+                product_id INT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+                UNIQUE KEY unique_favorite (user_id, product_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        `);
+        console.log('Favorites table initialized');
+    } catch (error) {
+        console.error('Error initializing Favorites table:', error);
+    }
+};
+initFavoritesTable();
+
 // --- Multer Configuration ---
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
@@ -122,6 +143,20 @@ app.get('/api/v1/users/me', authenticateToken, async (req, res) => {
     }
 });
 
+// Update Profile Info (username, phone)
+app.put('/api/v1/users/me', authenticateToken, async (req, res) => {
+    const { username, phone } = req.body;
+    try {
+        await pool.execute(
+            'UPDATE users SET username = ?, phone = ? WHERE id = ?',
+            [username, phone, req.user.id]
+        );
+        res.json({ success: true, message: 'Profile updated successfully' });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
 // Update Profile Image
 app.put('/api/v1/users/me/profile-image', authenticateToken, async (req, res) => {
     const { image_url } = req.body;
@@ -181,6 +216,26 @@ app.get('/api/v1/products', async (req, res) => {
         const [rows] = await pool.execute(query, params);
         res.json(rows);
     } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+app.get('/api/v1/products/search', async (req, res) => {
+    const { q } = req.query;
+    console.log(`[SEARCH] Query received: "${q}"`);
+    if (!q) {
+        return res.json([]);
+    }
+    const searchTerm = `%${q.toLowerCase()}%`;
+    try {
+        const [rows] = await pool.execute(
+            'SELECT * FROM products WHERE LOWER(name) LIKE ? OR LOWER(description) LIKE ?',
+            [searchTerm, searchTerm]
+        );
+        console.log(`[SEARCH] Results for "${q}": ${rows.length} found`);
+        res.json(rows);
+    } catch (error) {
+        console.error('[SEARCH] Error:', error.message);
         res.status(500).json({ success: false, message: error.message });
     }
 });
@@ -490,6 +545,66 @@ app.patch('/api/v1/payment-methods/:id/default', authenticateToken, async (req, 
         res.status(500).json({ success: false, message: error.message });
     } finally {
         connection.release();
+    }
+});
+
+// --- Favorites ---
+app.get('/api/v1/favorites', authenticateToken, async (req, res) => {
+    try {
+        const [rows] = await pool.execute(`
+            SELECT p.*, c.name as category_name 
+            FROM products p
+            JOIN favorites f ON p.id = f.product_id
+            JOIN categories c ON p.category_id = c.id
+            WHERE f.user_id = ?
+        `, [req.user.id]);
+        res.json({ success: true, favorites: rows });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+app.post('/api/v1/favorites/toggle', authenticateToken, async (req, res) => {
+    const { productId } = req.body;
+    console.log(`Toggle Favorite Request - User: ${req.user.id}, Product: ${productId}`);
+    try {
+        // Check if already favorited
+        const [existing] = await pool.execute(
+            'SELECT id FROM favorites WHERE user_id = ? AND product_id = ?',
+            [req.user.id, productId]
+        );
+        console.log(`Existing favorite check: ${existing.length > 0 ? 'Found' : 'Not found'}`);
+
+        if (existing.length > 0) {
+            // Remove from favorites
+            await pool.execute('DELETE FROM favorites WHERE id = ?', [existing[0].id]);
+            res.json({ success: true, message: 'Removed from favorites', isFavorited: false });
+        } else {
+            // Add to favorites
+            await pool.execute(
+                'INSERT INTO favorites (user_id, product_id) VALUES (?, ?)',
+                [req.user.id, productId]
+            );
+            res.json({ success: true, message: 'Added to favorites', isFavorited: true });
+        }
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+app.get('/api/v1/favorites/trending', async (req, res) => {
+    try {
+        const [rows] = await pool.execute(`
+            SELECT p.*, COUNT(f.id) as favorite_count
+            FROM products p
+            LEFT JOIN favorites f ON p.id = f.product_id
+            GROUP BY p.id
+            ORDER BY favorite_count DESC
+            LIMIT 10
+        `);
+        res.json({ success: true, trending: rows });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
     }
 });
 
