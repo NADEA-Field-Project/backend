@@ -249,15 +249,42 @@ app.get('/api/v1/products/search', async (req, res) => {
     }
 });
 
+// --- Price Calculation Helper ---
+const calculateItemPrice = (basePrice, options) => {
+    let totalPrice = basePrice;
+    try {
+        const opts = typeof options === 'string' ? JSON.parse(options) : options;
+        if (opts && Array.isArray(opts.options)) {
+            opts.options.forEach(opt => {
+                if (opt === '더블 패티') totalPrice += 3500;
+                else if (opt === '체다 치즈') totalPrice += 1000;
+                else if (opt === '스위스 치즈') totalPrice += 1200;
+            });
+        }
+    } catch (e) {
+        console.error('Error parsing options for price calculation:', e);
+    }
+    return totalPrice;
+};
+
 // --- Cart (Protected) ---
 app.get('/api/v1/carts', authenticateToken, async (req, res) => {
     try {
         const [rows] = await pool.execute(
-            'SELECT ci.*, p.name, p.price, p.image_url FROM cart_items ci JOIN products p ON ci.product_id = p.id WHERE ci.user_id = ?',
+            'SELECT ci.*, p.name, p.price as base_price, p.image_url FROM cart_items ci JOIN products p ON ci.product_id = p.id WHERE ci.user_id = ?',
             [req.user.id]
         );
-        const total = rows.reduce((acc, item) => acc + (item.price * item.quantity), 0);
-        res.json({ items: rows, totalPrice: total });
+
+        const itemsWithCalculatedPrices = rows.map(item => {
+            const price_with_options = calculateItemPrice(item.base_price, item.options);
+            return {
+                ...item,
+                price: price_with_options // Update price to include options for frontend display
+            };
+        });
+
+        const total = itemsWithCalculatedPrices.reduce((acc, item) => acc + (item.price * item.quantity), 0);
+        res.json({ items: itemsWithCalculatedPrices, totalPrice: total });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
@@ -266,9 +293,10 @@ app.get('/api/v1/carts', authenticateToken, async (req, res) => {
 app.post('/api/v1/carts/items', authenticateToken, async (req, res) => {
     const { productId, quantity, options } = req.body;
     try {
+        const optionsJson = JSON.stringify(options || {});
         const [existing] = await pool.execute(
-            'SELECT * FROM cart_items WHERE user_id = ? AND product_id = ?',
-            [req.user.id, productId]
+            'SELECT * FROM cart_items WHERE user_id = ? AND product_id = ? AND options = ?',
+            [req.user.id, productId, optionsJson]
         );
 
         if (existing.length > 0) {
@@ -279,7 +307,7 @@ app.post('/api/v1/carts/items', authenticateToken, async (req, res) => {
         } else {
             await pool.execute(
                 'INSERT INTO cart_items (user_id, product_id, quantity, options) VALUES (?, ?, ?, ?)',
-                [req.user.id, productId, quantity || 1, JSON.stringify(options || {})]
+                [req.user.id, productId, quantity || 1, optionsJson]
             );
         }
         res.status(201).json({ success: true, message: 'Item added to cart' });
@@ -333,19 +361,7 @@ app.post('/api/v1/orders', authenticateToken, async (req, res) => {
         if (cartItems.length === 0) throw new Error('Cart is empty');
 
         const totalPrice = cartItems.reduce((acc, item) => {
-            let itemPrice = item.price;
-            try {
-                const opts = typeof item.options === 'string' ? JSON.parse(item.options) : item.options;
-                if (opts && Array.isArray(opts.options)) {
-                    opts.options.forEach(opt => {
-                        if (opt === '더블 패티') itemPrice += 3500;
-                        else if (opt === '체다 치즈') itemPrice += 1000;
-                        else if (opt === '스위스 치즈') itemPrice += 1200;
-                    });
-                }
-            } catch (e) {
-                console.error('Error parsing options for price calculation:', e);
-            }
+            const itemPrice = calculateItemPrice(item.price, item.options);
             return acc + (itemPrice * item.quantity);
         }, 0);
         const orderId = 'ORD-' + Date.now();
