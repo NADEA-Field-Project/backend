@@ -1,0 +1,4 @@
+node_modules/
+.env
+*.log
+product_images_for_team/
